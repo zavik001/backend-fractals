@@ -3,13 +3,13 @@ package backend.academy.fractals.service.image;
 import backend.academy.fractals.service.model.Point;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import javax.imageio.ImageIO;
-import org.apache.commons.io.FilenameUtils;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class PngImageExporter implements ImageExporter {
     private static final int DEFAULT_COLOR = 0xFFFFFFFF;
     private static final int ALPHA_CHANNEL_MASK = 0xFF000000;
@@ -22,17 +22,15 @@ public class PngImageExporter implements ImageExporter {
         }
 
         try {
-            String sanitizedPath = FilenameUtils.getName(outputFile);
-            Path outputPath = FileSystems.getDefault().getPath(sanitizedPath).normalize();
+            Path outputPath = Path.of(outputFile);
 
-            try {
-                outputPath = outputPath.toRealPath();
-            } catch (IOException e) {
-                outputPath = outputPath.toAbsolutePath();
+            Path parentDir = outputPath.getParent();
+            if (parentDir != null && !Files.exists(parentDir)) {
+                Files.createDirectories(parentDir);
+                log.info("Created directories for path: {}", parentDir);
             }
 
             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-
             for (Point point : points) {
                 int x = point.getPixelX(width);
                 int y = point.getPixelY(height);
@@ -49,13 +47,10 @@ public class PngImageExporter implements ImageExporter {
                 }
             }
 
-            Path parentDir = outputPath.getParent();
-            if (parentDir != null && !Files.exists(parentDir)) {
-                Files.createDirectories(parentDir);
-            }
-
+            log.info("Exporting PNG image to: {}", outputPath);
             ImageIO.write(image, "png", outputPath.toFile());
         } catch (IOException e) {
+            log.error("Failed to export PNG image to file: {}", outputFile, e);
             throw new RuntimeException("Failed to export PNG image", e);
         }
     }

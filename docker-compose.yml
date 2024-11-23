@@ -1,4 +1,4 @@
-#version: '3.8'
+version: '3.8'
 
 services:
   database:
@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: Banana021104
       POSTGRES_DB: fractals_db
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
 
@@ -24,10 +24,11 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/fractals_db
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: Banana021104
+      SPRING_DATASOURCE_PASSWORD:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
     volumes:
       - ./logs:/app/logs
+      - ./src/main/resources:/app/config
 
 volumes:
   db-data:

@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "fractal_generations")
+@Table(name = "fractal_generations", schema = "public")
 @Getter
 @Setter
 @NoArgsConstructor
