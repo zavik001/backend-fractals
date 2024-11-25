@@ -1,14 +1,10 @@
 package backend.academy.fractals.service.model;
 
 import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.Data;
 
-@Getter
-@Setter
 @AllArgsConstructor
-@ToString
+@Data
 public class Point {
     private final double x;
     private final double y;

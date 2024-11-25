@@ -1,13 +1,9 @@
 package backend.academy.fractals.service.model;
 
 import backend.academy.fractals.service.transformation.TransformationType;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
-@RequiredArgsConstructor
+@Data
 public class FractalParameters {
     private final int width;
     private final int height;

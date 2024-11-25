@@ -1,4 +1,4 @@
-package backend.academy.fractals.repository;
+package backend.academy.fractals.repository.jpa;
 
 import backend.academy.fractals.entity.FractalEntity;
 import org.springframework.data.jpa.repository.JpaRepository;

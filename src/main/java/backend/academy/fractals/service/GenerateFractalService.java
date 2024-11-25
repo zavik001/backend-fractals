@@ -2,19 +2,21 @@ package backend.academy.fractals.service;
 
 import backend.academy.fractals.dto.FractalRequest;
 import backend.academy.fractals.entity.FractalEntity;
-import backend.academy.fractals.repository.FractalRepository;
+import backend.academy.fractals.repository.jpa.FractalRepository;
 import backend.academy.fractals.service.generation.FractalGeneration;
 import backend.academy.fractals.service.generation.factory.FractalGeneratorFactory;
 import backend.academy.fractals.service.image.ImageExporter;
 import backend.academy.fractals.service.image.ImageType;
 import backend.academy.fractals.service.image.factory.ImageExporterFactory;
 import backend.academy.fractals.service.model.FractalParameters;
+import backend.academy.fractals.service.model.GraphPoint;
 import backend.academy.fractals.service.model.Point;
 import backend.academy.fractals.service.transformation.TransformationType;
 import backend.academy.fractals.service.utils.FractalUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +32,7 @@ import org.springframework.stereotype.Service;
 public class GenerateFractalService {
 
     private final FractalRepository fractalRepository;
+    private final FractalRedisService redisService;
 
     @Async("taskExecutor")
     public CompletableFuture<Path> generateFractal(FractalRequest request,
@@ -38,7 +41,7 @@ public class GenerateFractalService {
         return CompletableFuture.supplyAsync(() -> {
             FractalEntity fractalEntity = initializeFractalEntity(request, imageType, transformationType);
             try {
-                Path outputPath = processFractalGeneration(request, imageType, transformationType);
+                Path outputPath = processFractalGeneration(fractalEntity, request, imageType, transformationType);
                 fractalEntity.imagePath(outputPath.toString());
                 finalizeFractalEntity(fractalEntity, null);
                 return outputPath;
@@ -53,8 +56,7 @@ public class GenerateFractalService {
             TransformationType transformationType) {
 
         FractalEntity entity = new FractalEntity();
-        entity.startTime(LocalDateTime.now())
-                .width(request.width())
+        entity.width(request.width())
                 .height(request.height())
                 .iterations(request.iterations())
                 .symmetry(request.symmetry())
@@ -65,7 +67,7 @@ public class GenerateFractalService {
         return entity;
     }
 
-    private Path processFractalGeneration(FractalRequest request, ImageType imageType,
+    private Path processFractalGeneration(FractalEntity fractalEntity, FractalRequest request, ImageType imageType,
             TransformationType transformationType) {
 
         String uniqueFileName = generateUniqueFileName(imageType);
@@ -97,10 +99,14 @@ public class GenerateFractalService {
                 request.symmetry(),
                 transformationType);
 
+        fractalEntity.startTime(LocalDateTime.now());
         FractalGeneration generator = FractalGeneratorFactory.createGenerator(request.generatorType());
         List<Point> points = generator.generate(parameters);
-
         FractalUtils.applyGammaCorrection(points, request.gamma());
+        fractalEntity.endTime(LocalDateTime.now());
+
+        long timeTaken = Duration.between(fractalEntity.startTime(), fractalEntity.endTime()).toMillis();
+        redisService.addPoint(request.generatorType(), new GraphPoint(request.iterations(), timeTaken));
 
         ImageExporter imageExporter = ImageExporterFactory.createExporter(imageType);
         imageExporter.export(points, request.width(), request.height(), outputPath.toString());
@@ -110,16 +116,13 @@ public class GenerateFractalService {
 
     private void handleFractalGenerationError(FractalEntity fractalEntity, Exception ex) {
         String errorMessage = "Error generating : " + ex.getMessage();
-        fractalEntity.endTime(LocalDateTime.now())
-                .errorMessage(errorMessage);
-
+        fractalEntity.errorMessage(errorMessage);
         log.error(errorMessage, ex);
         fractalRepository.save(fractalEntity);
     }
 
     private void finalizeFractalEntity(FractalEntity entity, String errorMessage) {
-        entity.endTime(LocalDateTime.now())
-                .errorMessage(errorMessage);
+        entity.errorMessage(errorMessage);
         fractalRepository.save(entity);
     }
 

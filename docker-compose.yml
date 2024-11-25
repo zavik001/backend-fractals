@@ -1,34 +1,56 @@
 version: '3.8'
 
 services:
-  database:
+  redis:
+    image: redis:6
+    container_name: fractals-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fractals-network
+    sysctls:
+      net.core.somaxconn: 511
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  db:
     image: postgres:15
     container_name: fractals-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Banana021104
-      POSTGRES_DB: fractals_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fractals
     ports:
       - "5434:5432"
-    volumes:
-      - db-data:/var/lib/postgresql/data
+    networks:
+      - fractals-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d fractals"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build:
       context: .
     container_name: fractals-app
     depends_on:
-      - database
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/fractals_db
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD:
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-    volumes:
-      - ./logs:/app/logs
-      - ./src/main/resources:/app/config
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/fractals
+      SPRING_REDIS_HOST: redis
+    networks:
+      - fractals-network
 
-volumes:
-  db-data:
+networks:
+  fractals-network:
+    driver: bridge
