@@ -7,17 +7,13 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Builder;
+import lombok.Data;
 
 @Entity
 @Table(name = "fractal_generations", schema = "public")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Data
+@Builder
 public class FractalEntity {
 
     @Id
@@ -30,7 +26,7 @@ public class FractalEntity {
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 
-    @Column(name = "end_time", nullable = false)
+    @Column(name = "end_time", nullable = true)
     private LocalDateTime endTime;
 
     @Column(name = "width", nullable = false)
@@ -39,24 +35,9 @@ public class FractalEntity {
     @Column(name = "height", nullable = false)
     private int height;
 
-    @Column(name = "iterations", nullable = false)
-    private int iterations;
+    @Column(name = "transformations", nullable = false, columnDefinition = "TEXT")
+    private String transformations;
 
-    @Column(name = "symmetry", nullable = false)
-    private int symmetry;
-
-    @Column(name = "gamma", nullable = false)
-    private double gamma;
-
-    @Column(name = "transformation_type", nullable = false)
-    private String transformationType;
-
-    @Column(name = "image_type", nullable = false)
-    private String imageType;
-
-    @Column(name = "image_path")
-    private String imagePath;
-
-    @Column(name = "error_message")
+    @Column(name = "error_message", nullable = true, columnDefinition = "TEXT")
     private String errorMessage;
 }

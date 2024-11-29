@@ -1,4 +1,4 @@
-package backend.academy.fractals.service.model;
+package backend.academy.fractals.service.model.redis;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;

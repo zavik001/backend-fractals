@@ -2,11 +2,13 @@ package backend.academy.fractals.service;
 
 import backend.academy.fractals.entity.GraphPointEntity;
 import backend.academy.fractals.repository.redis.GraphPointRepository;
-import backend.academy.fractals.service.model.GraphPoint;
+import backend.academy.fractals.service.model.redis.GraphPoint;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -27,19 +29,14 @@ public class FractalRedisService {
 
         log.info("Constructed GraphPointEntity: {}", entity);
 
-        try {
-            graphPointRepository.save(entity);
-            log.info("Point successfully saved in repository: {}", entity);
-        } catch (Exception e) {
-            log.error("Failed to save point for generator type [{}]: {}", generatorType, e.getMessage(), e);
-            throw e;
-        }
+        graphPointRepository.save(entity);
 
         // List<GraphPointEntity> savedPoints = graphPointRepository.findByGeneratorType(generatorType);
-        // log.info("Current points in repository for generator type [{}]: {}", generatorType, savedPoints);
+        // log.info("Current points in repository for generator type [{}]: {}", // generatorType, savedPoints);
     }
 
-    public List<GraphPoint> getPointsByType(String generatorType) {
+    @Async("taskExecutor")
+    public CompletableFuture<List<GraphPoint>> getPointsByType(String generatorType) {
         log.info("Fetching points for generator type: {}", generatorType);
 
         List<GraphPoint> points = graphPointRepository.findByGeneratorType(generatorType)
@@ -47,8 +44,8 @@ public class FractalRedisService {
                 .map(entity -> new GraphPoint(entity.iterations(), entity.timeTaken()))
                 .collect(Collectors.toList());
 
-        // log.info("Points fetched for generator type [{}]: {}", generatorType, points);
-        return points;
+        log.info("Points fetched for generator type [{}]: {}", generatorType, points);
+        return CompletableFuture.completedFuture(points);
     }
 
     public void clearData() {

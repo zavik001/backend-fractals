@@ -4,7 +4,7 @@ import backend.academy.fractals.service.model.Point;
 
 public class LinearTransformation implements Transformation {
     @Override
-    public Point transform(Point point) {
-        return new Point(point.x(), point.y(), point.color());
+    public Point apply(Point point) {
+        return point;
     }
 }

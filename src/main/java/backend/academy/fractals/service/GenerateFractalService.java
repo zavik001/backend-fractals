@@ -3,17 +3,19 @@ package backend.academy.fractals.service;
 import backend.academy.fractals.dto.FractalRequest;
 import backend.academy.fractals.entity.FractalEntity;
 import backend.academy.fractals.repository.jpa.FractalRepository;
-import backend.academy.fractals.service.generation.FractalGeneration;
-import backend.academy.fractals.service.generation.factory.FractalGeneratorFactory;
-import backend.academy.fractals.service.image.ImageExporter;
-import backend.academy.fractals.service.image.ImageType;
-import backend.academy.fractals.service.image.factory.ImageExporterFactory;
-import backend.academy.fractals.service.model.FractalParameters;
-import backend.academy.fractals.service.model.GraphPoint;
-import backend.academy.fractals.service.model.Point;
-import backend.academy.fractals.service.transformation.TransformationType;
-import backend.academy.fractals.service.utils.FractalUtils;
-import java.io.IOException;
+import backend.academy.fractals.service.generation.Generator;
+import backend.academy.fractals.service.generation.GeneratorFactory;
+import backend.academy.fractals.service.image.modifier.ImageProcessor;
+import backend.academy.fractals.service.image.modifier.ImageProcessorType;
+import backend.academy.fractals.service.image.modifier.factory.ImageProcessorFactory;
+import backend.academy.fractals.service.image.storing.ImageFormat;
+import backend.academy.fractals.service.image.storing.ImageSaver;
+import backend.academy.fractals.service.image.storing.factory.ImageFormatFactory;
+import backend.academy.fractals.service.model.BoundingBox;
+import backend.academy.fractals.service.model.FractalImage;
+import backend.academy.fractals.service.model.redis.GraphPoint;
+import backend.academy.fractals.service.transformation.Transformation;
+import backend.academy.fractals.service.transformation.factory.TransformationFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -21,30 +23,27 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Slf4j
-@AllArgsConstructor
 @Service
+@RequiredArgsConstructor
 public class GenerateFractalService {
 
     private final FractalRepository fractalRepository;
     private final FractalRedisService redisService;
 
     @Async("taskExecutor")
-    public CompletableFuture<Path> generateFractal(FractalRequest request,
-            TransformationType transformationType, ImageType imageType) {
-
+    public CompletableFuture<Path> generateFractal(FractalRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            FractalEntity fractalEntity = initializeFractalEntity(request, imageType, transformationType);
+            FractalEntity fractalEntity = initializeFractalEntity(request);
             try {
-                Path outputPath = processFractalGeneration(fractalEntity, request, imageType, transformationType);
-                fractalEntity.imagePath(outputPath.toString());
+                Path filePath = processFractalGeneration(fractalEntity, request);
                 finalizeFractalEntity(fractalEntity, null);
-                return outputPath;
+                return filePath;
             } catch (Exception ex) {
                 handleFractalGenerationError(fractalEntity, ex);
                 throw new RuntimeException("Error generating fractal: " + ex.getMessage(), ex);
@@ -52,82 +51,74 @@ public class GenerateFractalService {
         });
     }
 
-    private FractalEntity initializeFractalEntity(FractalRequest request, ImageType imageType,
-            TransformationType transformationType) {
-
-        FractalEntity entity = new FractalEntity();
-        entity.width(request.width())
+    private FractalEntity initializeFractalEntity(FractalRequest request) {
+        FractalEntity entity = FractalEntity.builder()
+                .generatorType(request.generatorType())
+                .startTime(LocalDateTime.now())
+                .width(request.width())
                 .height(request.height())
-                .iterations(request.iterations())
-                .symmetry(request.symmetry())
-                .gamma(request.gamma())
-                .transformationType(transformationType.name())
-                .imageType(imageType.name())
-                .generatorType(request.generatorType());
-        return entity;
+                .transformations(String.join(",", request.transformations()))
+                .build();
+        return fractalRepository.save(entity);
     }
 
-    private Path processFractalGeneration(FractalEntity fractalEntity, FractalRequest request, ImageType imageType,
-            TransformationType transformationType) {
-
-        String uniqueFileName = generateUniqueFileName(imageType);
-        if (uniqueFileName == null || uniqueFileName.isBlank()) {
-            throw new IllegalArgumentException("Generated file name is invalid (null or blank).");
-        }
-
+    private Path processFractalGeneration(FractalEntity fractalEntity, FractalRequest request) {
+        ImageFormat imageFormat = ImageFormatFactory.parse(request.imageType());
+        String uniqueFileName = "fractal_" + UUID.randomUUID() + "." + imageFormat.formatName();
         Path outputPath = Path.of("images", uniqueFileName);
-        try {
-            Path parentDir = outputPath.getParent();
-            if (parentDir == null) {
-                throw new IllegalArgumentException("Parent directory is null for path: " + outputPath);
-            }
 
-            Files.createDirectories(parentDir);
-            log.info("Directory ensured: {}", parentDir);
-        } catch (IOException e) {
-            log.error("Failed to create directories for path: {}", outputPath, e);
-            throw new RuntimeException("Failed to create output directory", e);
+        try {
+            Files.createDirectories(outputPath.getParent());
+            log.info("Directory ensured: {}", outputPath.getParent());
+        } catch (Exception ex) {
+            log.error("Failed to create directories for path: {}", outputPath, ex);
+            throw new RuntimeException("Failed to create output directory", ex);
         }
 
-        log.info("Output path: {}", outputPath);
+        BoundingBox area = new BoundingBox(
+                request.left(),
+                request.top(),
+                request.horizontalSize(),
+                request.verticalSize());
 
-        FractalParameters parameters = new FractalParameters(
-                request.width(),
-                request.height(),
-                request.iterations(),
-                request.gamma(),
+        List<Transformation> transformations = TransformationFactory.createAll(request.transformations());
+
+        Generator generator = GeneratorFactory.createGenerator(
+                request.generatorType(),
+                request.affineCoefficients(),
+                request.samples(),
+                request.iterPerSample(),
                 request.symmetry(),
-                transformationType);
+                transformations);
 
-        fractalEntity.startTime(LocalDateTime.now());
-        FractalGeneration generator = FractalGeneratorFactory.createGenerator(request.generatorType());
-        List<Point> points = generator.generate(parameters);
-        FractalUtils.applyGammaCorrection(points, request.gamma());
+        FractalImage image = generator.generate(request.width(), request.height(), area);
+
+        List<ImageProcessor> processors = request.imageProcessors().stream()
+                .map(ImageProcessorType::fromString)
+                .map(type -> ImageProcessorFactory.createProcessor(type, request.gamma()))
+                .toList();
+
+        processors.forEach(processor -> processor.process(image));
+
         fractalEntity.endTime(LocalDateTime.now());
+        fractalRepository.save(fractalEntity);
 
-        long timeTaken = Duration.between(fractalEntity.startTime(), fractalEntity.endTime()).toMillis();
-        redisService.addPoint(request.generatorType(), new GraphPoint(request.iterations(), timeTaken));
+        long duration = Duration.between(fractalEntity.startTime(), fractalEntity.endTime()).toMillis();
+        redisService.addPoint(request.generatorType(), new GraphPoint(request.iterPerSample(), duration));
 
-        ImageExporter imageExporter = ImageExporterFactory.createExporter(imageType);
-        imageExporter.export(points, request.width(), request.height(), outputPath.toString());
+        ImageSaver saver = ImageFormatFactory.createSaver(imageFormat);
+        saver.save(image, outputPath);
 
         return outputPath;
     }
 
     private void handleFractalGenerationError(FractalEntity fractalEntity, Exception ex) {
-        String errorMessage = "Error generating : " + ex.getMessage();
-        fractalEntity.errorMessage(errorMessage);
-        log.error(errorMessage, ex);
+        fractalEntity.errorMessage("Error: " + ex.getMessage());
         fractalRepository.save(fractalEntity);
     }
 
     private void finalizeFractalEntity(FractalEntity entity, String errorMessage) {
         entity.errorMessage(errorMessage);
         fractalRepository.save(entity);
-    }
-
-    private String generateUniqueFileName(ImageType imageType) {
-        String uniqueID = UUID.randomUUID().toString();
-        return "fractal_" + uniqueID + "." + imageType.name().toLowerCase();
     }
 }

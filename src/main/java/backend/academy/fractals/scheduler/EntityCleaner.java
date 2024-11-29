@@ -15,14 +15,10 @@ public class EntityCleaner {
 
     @Scheduled(cron = "0 0 0 * * ?") // Every day at 00:00
     public void clearFractalData() {
-        try {
-            log.info("Starting to clear the fractal_entity table...");
+        log.info("Starting to clear the fractal_entity table...");
 
-            fractalRepository.deleteAll();
+        fractalRepository.deleteAll();
 
-            log.info("Successfully cleared the fractal_entity table.");
-        } catch (Exception e) {
-            log.error("Failed to clear fractal_entity: {}", e.getMessage(), e);
-        }
+        log.info("Successfully cleared the fractal_entity table.");
     }
 }

@@ -4,11 +4,9 @@ import backend.academy.fractals.service.model.Point;
 
 public class SphereTransformation implements Transformation {
     @Override
-    public Point transform(Point point) {
-        double r2 = point.x() * point.x() + point.y() * point.y();
-        double newX = point.x() / r2;
-        double newY = point.y() / r2;
-
-        return new Point(newX, newY, point.color());
+    public Point apply(Point point) {
+        double x = point.x() / (point.x() * point.x() + point.y() * point.y());
+        double y = point.y() / (point.x() * point.x() + point.y() * point.y());
+        return new Point(x, y);
     }
 }

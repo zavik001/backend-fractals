@@ -15,14 +15,10 @@ public class RediseCleaner {
 
     @Scheduled(cron = "0 0 0 */3 * *") // Every 3 days
     public void clearOldData() {
-        try {
-            log.info("Startung to clean redis data...");
+        log.info("Startung to clean redis data...");
 
-            redisService.clearData();
+        redisService.clearData();
 
-            log.info("Successfully cleaned redis data.");
-        } catch (Exception e) {
-            log.error("Failed to clean redis: {}", e.getMessage(), e);
-        }
+        log.info("Successfully cleaned redis data.");
     }
 }

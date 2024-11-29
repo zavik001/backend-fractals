@@ -1,8 +1,12 @@
 package backend.academy.fractals.controller;
 
 import backend.academy.fractals.service.FractalRedisService;
-import backend.academy.fractals.service.model.GraphPoint;
+import backend.academy.fractals.service.model.redis.GraphPoint;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -18,19 +22,30 @@ public class FractalAnalysisController {
 
     private final FractalRedisService redisService;
 
-    @GetMapping("/single")
-    public ResponseEntity<List<GraphPoint>> getSingleThreadedData() {
-        log.info("Received request to fetch single-threaded graph data.");
-        List<GraphPoint> singleThreaded = redisService.getPointsByType("single-threaded");
-        log.info("Fetched single-threaded points: {}", singleThreaded);
-        return ResponseEntity.ok(singleThreaded);
-    }
+    @GetMapping("/data")
+    public ResponseEntity<Map<String, List<GraphPoint>>> getAllGraphData() {
+        log.info("Received request to fetch all graph data.");
 
-    @GetMapping("/multi")
-    public ResponseEntity<List<GraphPoint>> getMultiThreadedData() {
-        log.info("Received request to fetch multi-threaded graph data.");
-        List<GraphPoint> multiThreaded = redisService.getPointsByType("multi-threaded");
-        log.info("Fetched multi-threaded points: {}", multiThreaded);
-        return ResponseEntity.ok(multiThreaded);
+        CompletableFuture<List<GraphPoint>> singleThreadedFuture = redisService.getPointsByType("single-threaded");
+        CompletableFuture<List<GraphPoint>> multiThreadedFuture = redisService.getPointsByType("multi-threaded");
+
+        CompletableFuture.allOf(singleThreadedFuture, multiThreadedFuture).join();
+
+        try {
+            List<GraphPoint> singleThreaded = singleThreadedFuture.get();
+            List<GraphPoint> multiThreaded = multiThreadedFuture.get();
+
+            log.info("Fetched single-threaded points: {}", singleThreaded);
+            log.info("Fetched multi-threaded points: {}", multiThreaded);
+
+            Map<String, List<GraphPoint>> result = new HashMap<>();
+            result.put("singleThreaded", singleThreaded);
+            result.put("multiThreaded", multiThreaded);
+
+            return ResponseEntity.ok(result);
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Error fetching graph data", e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
